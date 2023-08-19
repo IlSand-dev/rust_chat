@@ -66,20 +66,6 @@ fn main() -> eframe::Result<()> {
         })
     });
 
-    let contacts: Vec<String> = if Path::new(settings::CONTACTS_FILE).exists() {
-        let mut f = File::open(settings::CONTACTS_FILE).unwrap();
-        let mut buf = String::new();
-        let n = f.read_to_string(&mut buf).unwrap();
-        if n != 0 {
-            serde_json::from_str(&buf[0..n]).unwrap()
-        }else {
-            Vec::new()
-        }
-    } else {
-        File::create(settings::CONTACTS_FILE).unwrap();
-        Vec::new()
-    };
-
     eframe::run_native(
         "RustChat",
         eframe::NativeOptions::default(),
