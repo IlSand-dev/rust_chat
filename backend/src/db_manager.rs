@@ -1,3 +1,4 @@
+use std::env::var;
 use std::fs::{File, OpenOptions};
 use std::io::ErrorKind::NotFound;
 use std::io::Write;
@@ -86,18 +87,37 @@ impl DbManager {
 
     pub fn get_connections(&self, username: String) -> Result<Vec<String>> {
         let mut result:Vec<String> = vec![];
-        if let Err(e) = self.conn.query_row("SELECT second FROM connections WHERE first=?1", [&username], |row| {
-            result.push(row.get(0).unwrap());
-            Ok(())
-        }){
-            if e != QueryReturnedNoRows{return Err(e)}
-        };
-        if let Err(e) = self.conn.query_row("SELECT first FROM connections WHERE second=?1", [&username], |row| {
-            result.push(row.get(0).unwrap());
-            Ok(())
-        }){
-            if e != QueryReturnedNoRows{return Err(e)}
-        };;
+        let mut stmt = self.conn.prepare("SELECT second FROM connections WHERE first=?1").unwrap();
+        let contact_iter = stmt.query_map([&username], |row| {
+            let value: String = row.get(0).unwrap();
+            println!("{}", value);
+            Ok(value)
+        });
+        match contact_iter {
+            Ok(iter) => {
+                for contact in iter{
+                    result.push(contact?)
+                }
+            }
+            Err(e) => {
+                if e != QueryReturnedNoRows{return Err(e)}
+            }
+        }
+        let mut stmt = self.conn.prepare("SELECT first FROM connections WHERE second=?1").unwrap();
+        let contact_iter = stmt.query_map([&username], |row| {
+            let value: String = row.get(0).unwrap();
+            Ok(value)
+        });
+        match contact_iter {
+            Ok(iter) => {
+                for contact in iter{
+                    result.push(contact?)
+                }
+            }
+            Err(e) => {
+                if e != QueryReturnedNoRows{return Err(e)}
+            }
+        }
         Ok(result)
     }
 
@@ -105,20 +125,18 @@ impl DbManager {
         Ok(self.conn.query_row("SELECT id FROM connections WHERE first=?1 AND second=?2 OR first=?2 AND second=?1 ", [&first, &second], |row|{
             println!("{:?}", row);
             let file_name:i32 = row.get(0).unwrap();
-            let file_name = file_name.to_string();
-            match OpenOptions::new().read(true).write(true).open(&file_name) {
+            let file_name = file_name.to_string() + ".history";
+            match OpenOptions::new().append(true).read(true).open(&file_name) {
                 Ok(file) => {
                     Ok(file)
                 }
                 Err(e) => {
                     let mut file = OpenOptions::new()
                         .read(true)
-                        .write(true)
+                        .append(true)
                         .create(true)
                         .open(&file_name)
                         .unwrap();
-                    let vec:Vec<Message> = Vec::new();
-                    file.write(serde_json::to_string(&vec).unwrap().as_bytes()).unwrap();
                     Ok(file)
                 }
             }

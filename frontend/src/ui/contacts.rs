@@ -2,6 +2,7 @@ use eframe::egui;
 
 #[derive(Default)]
 pub struct ContactsScreen{
+    pub error: Option<String>
 }
 
 impl ContactsScreen{

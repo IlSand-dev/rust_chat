@@ -4,13 +4,15 @@ mod db_manager;
 mod responses;
 
 use std::collections::HashMap;
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use tokio::net::{TcpListener, TcpStream};
 use bytes::Bytes;
 use rusqlite::{Connection, Result};
+use rusqlite::Error::{QueryReturnedNoRows, SqliteFailure};
+use rusqlite::ErrorCode::ConstraintViolation;
 use serde::Serialize;
 use tokio::io;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf};
@@ -66,23 +68,33 @@ async fn process(mut socket: TcpStream, tx: Sender<Resp>, mut rx: Receiver<Resp>
         match request {
             Ok(rq) => match rq {
                 Requests::Register(data) => {
-                    let result = {
-                        let mng = mng.lock().unwrap();
-                        mng.add_user(data.username, data.password)
-                    };
-                    match result {
-                        Ok(_) => {
-                            wr.write_all(
-                                Response::Ok.to_json().as_bytes()).await.unwrap()
-                        }
-                        Err(e) => {
-                            eprintln!("Error during creating User: {e}");
-                            wr.write_all(
-                                Response::Error(Error::new(
-                                    "User hasn't created".to_string())).to_json().as_bytes()
-                            ).await.unwrap();
-                        }
-                    };
+                    if data.password.len() >= 8 {
+                        let result = {
+                            let mng = mng.lock().unwrap();
+                            mng.add_user(data.username, data.password)
+                        };
+                        match result {
+                            Ok(_) => {
+                                wr.write_all(
+                                    Response::Ok.to_json().as_bytes()).await.unwrap()
+                            }
+                            Err(e) => {
+                                if let Some(code) = e.sqlite_error_code() {
+                                    if code == ConstraintViolation {
+                                        wr.write_all(Response::Error(Error::new("User already exists".to_string())).to_json().as_bytes()).await.unwrap();
+                                    }
+                                } else {
+                                    wr.write_all(
+                                        Response::Error(Error::new(
+                                            "User hasn't created".to_string())).to_json().as_bytes()
+                                    ).await.unwrap();
+                                }
+                            }
+                        };
+                    } else {
+                        wr.write_all(Response::Error(Error::new(
+                            "Password must have at least 8 characters".to_string())).to_json().as_bytes()).await.unwrap();
+                    }
                 }
                 Requests::Login(data) => {
                     let user;
@@ -154,13 +166,14 @@ async fn read_messages(mut rd: ReadHalf<TcpStream>, mut tx: Sender<Resp>, userna
                         let db_manager = db_manager.lock().unwrap();
                         match db_manager.get_history(username.as_str(), data.username.as_str()) {
                             Ok(mut file) => {
-                                let mut buf = [0; 16384];
-                                let n = file.read(&mut buf).unwrap();
-                                let mut history: Vec<Message> = serde_json::from_slice(&buf[0..n]).unwrap();
-                                history.push(message.clone());
-                                file.set_len(0).unwrap();
-                                file.seek(SeekFrom::Start(0)).unwrap();
-                                file.write(serde_json::to_string(&history).unwrap().as_bytes()).unwrap();
+                                file.write(format!("{};", message.clone().to_json()).as_bytes()).unwrap();
+                                // let mut buf = [0; 16384];
+                                // let n = file.read(&mut buf).unwrap();
+                                // let mut history: Vec<Message> = serde_json::from_slice(&buf[0..n]).unwrap();
+                                // history.push(message.clone());
+                                // file.set_len(0).unwrap();
+                                // file.seek(SeekFrom::Start(0)).unwrap();
+                                // file.write(serde_json::to_string(&history).unwrap().as_bytes()).unwrap();
                                 Response::Ok
                             }
                             Err(e) => { Response::Error(Error::new(e.to_string())) }
@@ -198,9 +211,25 @@ async fn read_messages(mut rd: ReadHalf<TcpStream>, mut tx: Sender<Resp>, userna
                         let db_manager = db_manager.lock().unwrap();
                         match db_manager.get_history(username.as_str(), second_user.as_str()) {
                             Ok(mut file) => {
+                            //     let mut buf = [0; 16384];
+                            //     let n = file.read(&mut buf).unwrap();
+                            //     let history: Vec<Message> = serde_json::from_slice(&buf[0..n]).unwrap();
                                 let mut buf = [0; 16384];
                                 let n = file.read(&mut buf).unwrap();
-                                let history: Vec<Message> = serde_json::from_slice(&buf[0..n]).unwrap();
+                                let mut messages = vec![];
+                                if n > 0{
+                                    let string = String::from_utf8_lossy(&buf[0..n]);
+                                    for msg in string.split(";"){
+                                        if msg != "" {
+                                            messages.push(msg.to_string());
+                                        }
+                                    }
+                                }
+                                println!("{:?}", messages);
+                                let mut history = vec![];
+                                for message in messages{
+                                    history.push(serde_json::from_str(message.as_str()).unwrap());
+                                }
                                 Response::History(history)
                             }
                             Err(e) => { Response::Error(Error::new(e.to_string())) }

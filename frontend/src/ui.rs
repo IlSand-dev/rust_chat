@@ -27,14 +27,13 @@ pub struct App {
     user: String,
     contacts: Vec<String>,
     messages: Vec<Message>,
-    error: Option<String>,
     add_window: bool,
     add_username: String,
 }
 
 impl App {
     pub fn new(tx: Sender<Request>, rx: Receiver<Response>, contacts: Vec<String>) -> Self {
-        App { view: View::default(), tx, rx, user: "".to_string(), contacts,messages: Vec::new(), error: None, add_window: false, add_username: "".to_string() }
+        App { view: View::default(), tx, rx, user: "".to_string(), contacts, messages: Vec::new(), add_window: false, add_username: "".to_string() }
     }
 }
 
@@ -42,10 +41,10 @@ impl eframe::App for App {
     fn update(&mut self, ctx: &Context, frame: &mut Frame) {
         match self.view {
             View::Login(ref mut login) => {
-                let (update, register) = login.update(ctx, &self.error);
+                let (update, register) = login.update(ctx);
                 if update {
                     let request = Request::Login(Login::new(login.username.clone(), login.password.clone()));
-                    self.tx.send(request).  unwrap();
+                    self.tx.send(request).unwrap();
                 }
                 if register {
                     self.view = View::Register(RegisterScreen::default());
@@ -61,7 +60,7 @@ impl eframe::App for App {
                             ctx.request_repaint();
                         }
                         Response::Error(e) => {
-                            self.error = Some(e.data);
+                            login.error = Some(e.data);
                             ctx.request_repaint();
                         }
                         _ => {}
@@ -69,13 +68,17 @@ impl eframe::App for App {
                 }
             }
             View::Register(ref mut register) => {
-                let (update, login) = register.update(ctx, &self.error);
+                let (update, login) = register.update(ctx);
                 if update {
-                    let request = Request::Register(Register::new(register.username.clone(), register.password.clone()));
-                    if let Err(e) = self.tx.send(request) {
-                        println!("{:?}", e);
-                        self.error = Some(e.to_string());
-                    };
+                    if register.password.len() >= 8 {
+                        let request = Request::Register(Register::new(register.username.clone(), register.password.clone()));
+                        if let Err(e) = self.tx.send(request) {
+                            println!("{:?}", e);
+                            register.error = Some(e.to_string());
+                        };
+                    } else {
+                        register.error = Some("Password must have at least 8 characters".to_string())
+                    }
                 }
                 if login {
                     self.view = View::Login(LoginScreen::default());
@@ -90,7 +93,7 @@ impl eframe::App for App {
                             return;
                         }
                         Response::Error(e) => {
-                            println!("{:?}", e);
+                            register.error = Some(e.data);
                         }
                         _ => {}
                     }
@@ -99,9 +102,10 @@ impl eframe::App for App {
             View::Contacts(ref mut contacts_screen) => {
                 let (user, add) = contacts_screen.update(ctx, &self.contacts);
                 if let Some(user) = user {
-                    self.tx.send(Request::GetHistory {username: user.clone()}).unwrap();
-                    self.view = View::Chat(ChatScreen{contact: user, text:"".to_string()});
+                    self.tx.send(Request::GetHistory { username: user.clone() }).unwrap();
+                    self.view = View::Chat(ChatScreen { contact: user, text: "".to_string(), error: None });
                     ctx.request_repaint();
+                    return;
                 }
                 if add {
                     self.add_username = "".to_string();
@@ -116,8 +120,8 @@ impl eframe::App for App {
                             changed = true;
                         }
                     });
-                    if changed{
-                        self.tx.send(Request::AddContact{username: self.add_username.clone()}).unwrap();
+                    if changed {
+                        self.tx.send(Request::AddContact { username: self.add_username.clone() }).unwrap();
                     }
                 }
                 if let Ok(response) = self.rx.try_recv() {
@@ -126,25 +130,32 @@ impl eframe::App for App {
                             self.tx.send(Request::GetContacts).unwrap();
                         }
                         Response::Error(e) => {
-                            self.error = Some(e.data);
+                            contacts_screen.error = Some(e.data);
                         }
-                        Response::Contacts{contacts} => {
+                        Response::Contacts { contacts } => {
                             self.contacts = contacts;
                         }
                         _ => {}
                     };
                 };
-            },
+            }
             View::Chat(ref mut chat) => {
-                if chat.update(ctx, &self.messages){
+                let (update, back) = chat.update(ctx, &self.messages);
+                if update {
                     self.messages.push(Message::new(self.user.clone(), chat.text.clone()));
                     self.tx.send(Request::Message(Message::new(chat.contact.clone(), chat.text.clone()))).unwrap();
                     chat.text = "".to_string();
                 }
-                if let Ok(response) = self.rx.try_recv(){
+                if back{
+                    self.tx.send(Request::GetContacts).unwrap();
+                    self.view = View::Contacts(ContactsScreen::default());
+                    ctx.request_repaint();
+                    return;
+                }
+                if let Ok(response) = self.rx.try_recv() {
                     match response {
                         Response::Error(e) => {
-                            self.error = Some(e.data)
+                            chat.error = Some(e.data)
                         }
                         Response::Message(message) => {
                             self.messages.push(message);
@@ -165,7 +176,7 @@ pub enum View {
     Login(LoginScreen),
     Contacts(ContactsScreen),
     Register(RegisterScreen),
-    Chat(ChatScreen)
+    Chat(ChatScreen),
 }
 
 impl Default for View {
