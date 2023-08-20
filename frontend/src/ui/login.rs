@@ -14,7 +14,7 @@ impl LoginScreen{
         let mut update = false;
         let mut register = false;
         egui::CentralPanel::default().show(ctx, |ui|{
-            ui.heading("Argix");
+            ui.heading("Chat");
             ui.add_space(10.);
             ui.group(|ui|{
                 ui.set_max_width(300.);

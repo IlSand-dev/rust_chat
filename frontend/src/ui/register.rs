@@ -1,6 +1,4 @@
-use std::sync::Arc;
 use eframe::egui::{self, Color32, TextEdit};
-use crate::requests::Login;
 
 #[derive(Default)]
 pub struct RegisterScreen{
@@ -14,7 +12,7 @@ impl RegisterScreen{
         let mut update = false;
         let mut login = false;
         egui::CentralPanel::default().show(ctx, |ui|{
-            ui.heading("Argix");
+            ui.heading("Chat");
             ui.add_space(10.);
             ui.group(|ui|{
                 ui.set_max_width(300.);

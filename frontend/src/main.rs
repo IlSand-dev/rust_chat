@@ -6,22 +6,15 @@ mod models;
 mod settings;
 mod responses;
 
-use std::fs::File;
 use std::io::Read;
-use std::path::Path;
-use std::time::Duration;
 use std::sync::mpsc;
-use std::sync::mpsc::TryRecvError;
-use serde_json::Value;
 use serde::{Serialize, Deserialize};
 use tokio::io;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::io::{ReadHalf, WriteHalf};
+use tokio::io::{ReadHalf};
 use tokio::net::TcpStream;
 use tokio::runtime::Runtime;
-use tokio::sync::oneshot::Sender;
 use requests::Request;
-use crate::requests::{Login, Message};
 use crate::responses::Response;
 
 #[cfg(not(target_arch = "wasm32"))]

@@ -96,7 +96,10 @@ impl DbManager {
         match contact_iter {
             Ok(iter) => {
                 for contact in iter{
-                    result.push(contact?)
+                    let contact = contact?;
+                    if contact != username {
+                        result.push(contact)
+                    }
                 }
             }
             Err(e) => {

@@ -1,12 +1,8 @@
-use std::sync::Arc;
-use eframe::{egui, Error, Frame};
+use eframe::{egui, Frame};
 use eframe::egui::Context;
 use crate::requests::{Register, Request, Login, Message};
-use std::sync::mpsc;
 use std::sync::mpsc::{Sender, Receiver};
-use eframe::egui::Key::V;
 use eframe::egui::TextEdit;
-use crate::models::User;
 use crate::responses::Response;
 use crate::ui::chat::ChatScreen;
 use crate::ui::contacts::ContactsScreen;
@@ -26,14 +22,13 @@ pub struct App {
     rx: Receiver<Response>,
     user: String,
     contacts: Vec<String>,
-    messages: Vec<Message>,
     add_window: bool,
     add_username: String,
 }
 
 impl App {
     pub fn new(tx: Sender<Request>, rx: Receiver<Response>, contacts: Vec<String>) -> Self {
-        App { view: View::default(), tx, rx, user: "".to_string(), contacts, messages: Vec::new(), add_window: false, add_username: "".to_string() }
+        App { view: View::default(), tx, rx, user: "".to_string(), contacts, add_window: false, add_username: "".to_string() }
     }
 }
 
@@ -103,7 +98,7 @@ impl eframe::App for App {
                 let (user, add) = contacts_screen.update(ctx, &self.contacts);
                 if let Some(user) = user {
                     self.tx.send(Request::GetHistory { username: user.clone() }).unwrap();
-                    self.view = View::Chat(ChatScreen { contact: user, text: "".to_string(), error: None });
+                    self.view = View::Chat(ChatScreen { text: "".to_string(), contact: user, messages: vec![], error: None });
                     ctx.request_repaint();
                     return;
                 }
@@ -135,14 +130,19 @@ impl eframe::App for App {
                         Response::Contacts { contacts } => {
                             self.contacts = contacts;
                         }
+                        Response::Message(_) =>{
+                            self.tx.send(Request::GetContacts).unwrap();
+                        }
                         _ => {}
                     };
                 };
             }
             View::Chat(ref mut chat) => {
-                let (update, back) = chat.update(ctx, &self.messages);
+                let (update, back) = chat.update(ctx);
                 if update {
-                    self.messages.push(Message::new(self.user.clone(), chat.text.clone()));
+                    if chat.contact != self.user {
+                        chat.messages.push(Message::new(self.user.clone(), chat.text.clone()));
+                    }
                     self.tx.send(Request::Message(Message::new(chat.contact.clone(), chat.text.clone()))).unwrap();
                     chat.text = "".to_string();
                 }
@@ -158,10 +158,10 @@ impl eframe::App for App {
                             chat.error = Some(e.data)
                         }
                         Response::Message(message) => {
-                            self.messages.push(message);
+                            chat.messages.push(message);
                         }
                         Response::History(history) => {
-                            self.messages = history;
+                            chat.messages = history;
                         }
                         _ => {}
                     }

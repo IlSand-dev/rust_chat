@@ -5,11 +5,12 @@ use crate::requests::Message;
 pub struct ChatScreen {
     pub text: String,
     pub contact: String,
+    pub messages: Vec<Message>,
     pub error: Option<String>
 }
 
 impl ChatScreen {
-    pub fn update(&mut self, ctx: &Context, messages: &Vec<Message>) -> (bool, bool) {
+    pub fn update(&mut self, ctx: &Context) -> (bool, bool) {
         let mut update = false;
         let mut back = false;
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -18,7 +19,7 @@ impl ChatScreen {
             }
             ui.heading(self.contact.as_str());
             egui::ScrollArea::vertical().show(ui, |ui| {
-                for message in messages {
+                for message in &self.messages {
                     ui.label(format!("{}: {}", message.username, message.text));
                 }
             });

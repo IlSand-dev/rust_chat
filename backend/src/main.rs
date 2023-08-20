@@ -28,7 +28,7 @@ use crate::responses::{Error, Response};
 type Mng = Arc<Mutex<DbManager>>;
 type Resp = (String, Response);
 
-const ADDR: &str = "localhost:8000";
+const ADDR: &str = "127.0.0.1:8000";
 const DB_PATH: &str = "chat_db.sqlite3";
 
 #[tokio::main]
